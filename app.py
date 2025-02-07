@@ -2,6 +2,7 @@ import pygame
 import random
 import sys
 import math
+import numpy as np
 from settings import *
 from helpers import *
 
@@ -404,14 +405,90 @@ def scene_w(screen):
             letter_surface = font.render(cell['letter'], True, cell['color'])
             screen.blit(letter_surface, (final_x, final_y))
 
-
-
-
-
-
 def scene_e(screen):
-    """Placeholder: Fill screen with a greenish tint."""
-    screen.fill((50, 100, 50))
+    """Generates an evolving Mandelbrot view that continuously zooms and drifts.
+    Colors are mapped using a blue-to-black gradient with a nonlinear (sqrt) scaling,
+    emphasizing the fractal’s boundary details.
+    """
+    screen.fill((0, 0, 0))
+    
+    # Use a low resolution for speed.
+    res_factor = 4
+    img_width = WIDTH // res_factor
+    img_height = HEIGHT // res_factor
+
+    # Initialize persistent state if needed.
+    if not hasattr(scene_e, "state"):
+        state = {}
+        # Pick a random starting center from a region known to contain fractal detail.
+        state["center"] = (random.uniform(-2.0, 1.0), random.uniform(-1.0, 1.0))
+        state["zoom"] = random.uniform(1, 50)  # Starting zoom factor.
+        state["max_iter"] = 50               # Increased iteration count for more detail.
+        scene_e.state = state
+    state = scene_e.state
+
+    # Update the zoom factor slowly.
+    zoom_factor = 1.050  # 0.5% increase per frame.
+    state["zoom"] *= zoom_factor
+
+    # Drift the center slightly each frame for evolving visuals.
+    cx, cy = state["center"]
+    cx += random.uniform(-0.002, 0.002)
+    cy += random.uniform(-0.002, 0.002)
+    state["center"] = (-0.74364, 0.13183)
+
+    # Compute the view rectangle in the complex plane.
+    view_width = 3.5 / state["zoom"]
+    view_height = view_width * (img_height / img_width)
+    center_x, center_y = state["center"]
+    x_min = center_x - view_width / 2
+    x_max = center_x + view_width / 2
+    y_min = center_y - view_height / 2
+    y_max = center_y + view_height / 2
+
+    # Create coordinate arrays.
+    xs = np.linspace(x_min, x_max, img_width)
+    ys = np.linspace(y_min, y_max, img_height)
+    X, Y = np.meshgrid(xs, ys)
+    C = X + 1j * Y
+    Z = np.zeros(C.shape, dtype=complex)
+    max_iter = state["max_iter"]
+    iters = np.zeros(C.shape, dtype=int)
+    mask = np.full(C.shape, True, dtype=bool)
+
+    # Mandelbrot iteration loop.
+    for i in range(max_iter):
+        Z[mask] = Z[mask] * Z[mask] + C[mask]
+        mask_new = np.abs(Z) <= 2.0
+        escaped = mask & (~mask_new)
+        iters[escaped] = i
+        mask = mask_new
+    iters[mask] = max_iter
+
+    # Color mapping: Use a blue-to-black gradient with sqrt scaling.
+    # Points that never escape (n == max_iter) are black.
+    # Otherwise, we compute f = n/max_iter, then blue = 255*(1 - sqrt(f)).
+    def mandelbrot_color(n):
+        if n == max_iter:
+            return (0, 0, 0)
+        else:
+            f = n / max_iter
+            blue_value = int(255 * (1 - math.sqrt(f)))
+            return (0, 0, blue_value)
+
+    # Build an image array.
+    img = np.empty((img_height, img_width, 3), dtype=np.uint8)
+    for i in range(img_height):
+        for j in range(img_width):
+            img[i, j] = mandelbrot_color(iters[i, j])
+
+    # Create a Pygame surface from the image array.
+    # Note: Transpose because Pygame expects (width, height, channels).
+    mandelbrot_surface = pygame.surfarray.make_surface(np.transpose(img, (1, 0, 2)))
+    # Scale the low-resolution image to the full display size.
+    mandelbrot_surface = pygame.transform.scale(mandelbrot_surface, (WIDTH, HEIGHT))
+    screen.blit(mandelbrot_surface, (0, 0))
+
 
 
 def scene_r(screen):
