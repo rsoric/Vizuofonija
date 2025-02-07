@@ -1,9 +1,9 @@
 import pygame
 import random
 import sys
+import math
 from settings import *
 from helpers import *
-
 
 # These are the animation scenes for the show
 
@@ -18,7 +18,8 @@ def scene_2(screen):
     amplitude = random.randint(10, 30)
     step = random.randint(5, 40)
     num_lines = random.randint(17, 56)
-    baseline_y_positions = [random.randint(0, HEIGHT) for _ in range(num_lines)]
+    baseline_y_positions = [random.randint(
+        0, HEIGHT) for _ in range(num_lines)]
 
     screen.fill((0, 0, 0))
     for base_y in baseline_y_positions:
@@ -33,7 +34,8 @@ def scene_3(screen):
     amplitude = random.randint(10, 30)
     step = random.randint(5, 40)
     num_lines = random.randint(17, 56)
-    baseline_y_positions = [random.randint(0, HEIGHT) for _ in range(num_lines)]
+    baseline_y_positions = [random.randint(
+        0, HEIGHT) for _ in range(num_lines)]
 
     screen.fill((0, 0, 0))
     # Define the circle's radius (almost full height)
@@ -103,7 +105,8 @@ def scene_8(screen):
     for y in range(grid_height):
         for x in range(grid_width):
             if scene_8.grid[y][x]:
-                rect = pygame.Rect(x * cell_size, y * cell_size, cell_size, cell_size)
+                rect = pygame.Rect(x * cell_size, y *
+                                   cell_size, cell_size, cell_size)
                 pygame.draw.rect(screen, live_color, rect)
 
     # Compute the next generation of the grid using Conway's Game of Life rules.
@@ -169,7 +172,8 @@ def scene_9(screen):
     stripes_added = 0
     while len(scene_9.stripes) < scene_9.total_stripes and stripes_added < num_to_add:
         # Use a Gaussian to bias x positions toward the center of the band.
-        x_offset = int(random.gauss(scene_9.band_width / 2, scene_9.band_width / 6))
+        x_offset = int(random.gauss(
+            scene_9.band_width / 2, scene_9.band_width / 6))
         # Clamp x_offset to valid values within the band.
         x_offset = max(0, min(scene_9.band_width - 1, x_offset))
         # Translate to a screen x-coordinate.
@@ -283,9 +287,126 @@ def scene_q(screen):
             scene_q.last_copy_time = current_time
 
 
+
+
 def scene_w(screen):
-    """Placeholder: Fill screen with a reddish tint."""
-    screen.fill((100, 50, 50))
+    """Fills the screen with a grid of 30x30 pixel letters.
+    Initially, every cell shows ".", and on each frame there is a chance for a cell
+    to change to a glitch character. Once a cell changes, it remains that way.
+    Additionally, a pulsating ripple effect is applied:
+      - The ripple center is fixed at the grid’s center.
+      - A global offset vector oscillates from 0 to 100 px in a pulsating, breathing motion.
+        When the pulsation returns to 0, the direction is changed.
+      - Each cell’s drawn offset is the global offset multiplied by a factor that
+        decreases with its Chebyshev distance from the center (using 40 as the maximum distance).
+    Every 1500 frames, the grid resets to white dots.
+    """
+    # Fill background black.
+    screen.fill((0, 0, 0))
+    cell_size = 30
+
+    # Initialize persistent state in a dictionary.
+    if not hasattr(scene_w, "state"):
+        scene_w.state = {}
+        cols = WIDTH // cell_size
+        rows = HEIGHT // cell_size
+        # Create the grid: each cell is a dict with 'letter' and 'color'
+        scene_w.state["grid"] = [
+            [{'letter': ".", 'color': (255, 255, 255)} for _ in range(cols)]
+            for _ in range(rows)
+        ]
+        scene_w.state["font"] = pygame.font.SysFont("BarCode", cell_size, bold=True)
+        scene_w.state["cell_size"] = cell_size
+        scene_w.state["cols"] = cols
+        scene_w.state["rows"] = rows
+        # Fixed ripple center at the grid's center.
+        scene_w.state["ripple_center"] = (cols / 2.0, rows / 2.0)
+        # Fixed pulsation direction (angle in radians); will change each time the pulsation returns to 0.
+        scene_w.state["pulsate_angle"] = random.uniform(0, 2 * math.pi)
+        # Flag to prevent multiple changes per cycle.
+        scene_w.state["angle_changed"] = False
+        # Frame counter to trigger periodic resets.
+        scene_w.state["frame_counter"] = 0
+
+    state = scene_w.state
+    grid = state["grid"]
+    cols = state["cols"]
+    rows = state["rows"]
+    font = state["font"]
+
+    # Increment frame counter; every 1500 frames, reset the grid.
+    state["frame_counter"] += 1
+    if state["frame_counter"] >= 1500:
+        for r in range(rows):
+            for c in range(cols):
+                grid[r][c]['letter'] = "."
+                grid[r][c]['color'] = (255, 255, 255)
+        state["frame_counter"] = 0
+
+    # With 90% probability per frame, update one random cell (only those that are still ".")
+    if random.random() < 0.9:
+        default_cells = [(r, c) for r in range(rows) for c in range(cols)
+                         if grid[r][c]['letter'] == "."]
+        if default_cells:
+            r, c = random.choice(default_cells)
+            glitch_chars = [";", "!", ":", "\"", "^", "(", ")", "$", "%", "#", ".", ".", ".", "."]
+            new_letter = random.choice(glitch_chars)
+            glitch_colors = [
+                (57, 255, 20),    # Neon green
+                (255, 20, 147),   # Neon pink
+                (255, 255, 255),  # White
+                (0, 0, 139)       # Deep blue
+            ]
+            if random.random() < 0.3:
+                new_color = random.choice(glitch_colors)
+            else:
+                new_color = (255, 255, 255)
+            grid[r][c]['letter'] = new_letter
+            grid[r][c]['color'] = new_color
+
+    # --- Pulsating Ripple Effect ---
+    # The ripple center remains fixed at the grid center.
+    ripple_center = state["ripple_center"]
+
+    # Compute a pulsating magnitude that oscillates smoothly from 0 to 100 px (period = 3 seconds).
+    t = pygame.time.get_ticks() / 1000.0
+    period = 3.0
+    pulsate_magnitude = ((math.sin(2 * math.pi * t / period) + 1) / 2) * 100
+
+    # When the magnitude is near 0, update the pulsation angle (once per cycle).
+    if pulsate_magnitude < 5 and not state["angle_changed"]:
+        state["pulsate_angle"] = random.uniform(0, 2 * math.pi)
+        state["angle_changed"] = True
+    elif pulsate_magnitude >= 5:
+        state["angle_changed"] = False
+
+    pulsate_angle = state["pulsate_angle"]
+    global_offset_x = math.cos(pulsate_angle) * pulsate_magnitude
+    global_offset_y = math.sin(pulsate_angle) * pulsate_magnitude
+
+    # Define a scaling function: cells at distance 0 get full offset; those farther away get reduced.
+    def scale_for_distance(d):
+        return max(0, 1 - (d / 40.0))
+
+    # --- Draw the Grid with the Pulsating Ripple Offset ---
+    for r in range(rows):
+        for c in range(cols):
+            cell = grid[r][c]
+            orig_x = c * cell_size
+            orig_y = r * cell_size
+            # Chebyshev distance from the center.
+            d = max(abs(c - ripple_center[0]), abs(r - ripple_center[1]))
+            scale = scale_for_distance(d)
+            offset_x = global_offset_x * scale
+            offset_y = global_offset_y * scale
+            final_x = orig_x + offset_x
+            final_y = orig_y + offset_y
+            letter_surface = font.render(cell['letter'], True, cell['color'])
+            screen.blit(letter_surface, (final_x, final_y))
+
+
+
+
 
 
 def scene_e(screen):
